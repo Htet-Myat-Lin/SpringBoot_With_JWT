@@ -9,7 +9,7 @@ This project implements an authentication system using Spring Security and JWT t
 ## Installation & Setup
 1. Clone the repository:
 ```
-git clone https://github.com/your-username/jwt-spring.git
+https://github.com/Htet-Myat-Lin/SpringBoot_With_JWT.git
 ```
 
 2. Run the application
