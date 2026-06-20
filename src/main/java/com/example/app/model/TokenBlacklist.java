@@ -7,7 +7,7 @@ import lombok.*;
 @Table(name = "token_blacklist")
 @AllArgsConstructor
 @NoArgsConstructor
-@Generated
+@Getter
 @Setter
 @Builder
 public class TokenBlacklist {

@@ -8,6 +8,7 @@ import com.example.app.model.TokenBlacklist;
 import com.example.app.model.User;
 import com.example.app.repository.TokenBlacklistRepository;
 import com.example.app.repository.UserRepository;
+import com.example.app.service.token.TokenService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -28,6 +29,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final TokenBlacklistRepository tokenBlacklistRepository;
+    private final TokenService tokenService;
 
     /*
      * Login user
@@ -42,26 +44,7 @@ public class AuthService {
 
         User user = userRepository.findByEmail(req.getEmail()).orElseThrow(() -> new BadCredentialsException("Invalid Email or Password"));
 
-        String accessToken = jwtService.generateAccessToken(user.getEmail());
-        String refreshToken = jwtService.generateRefreshToken(user.getEmail());
-
-        user.setRefreshToken(refreshToken);
-        userRepository.save(user);
-
-        ResponseCookie cookie = ResponseCookie.from("refresh_token", refreshToken)
-                .httpOnly(true)
-                .secure(true)
-                .path("/")
-                .maxAge(60 * 60 * 24 * 10)
-                .sameSite("Lax")
-                .build();
-
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
-
-        return GetUserAndToken.builder()
-                .user(user)
-                .accessToken(accessToken)
-                .build();
+        return tokenService.generateTokensAndSetCookie(user, response);
     }
 
     /*
@@ -83,24 +66,7 @@ public class AuthService {
 
         User user = userRepository.save(newUser);
 
-        String accessToken = jwtService.generateAccessToken(user.getEmail());
-        String refreshToken = jwtService.generateRefreshToken(user.getEmail());
-        user.setRefreshToken(refreshToken);
-
-        ResponseCookie cookie = ResponseCookie.from("refresh_token", refreshToken)
-                .httpOnly(true)
-                .secure(true)
-                .path("/")
-                .maxAge(60 * 60 * 24 * 10)
-                .sameSite("Lax")
-                .build();
-
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
-
-        return GetUserAndToken.builder()
-                .user(user)
-                .accessToken(accessToken)
-                .build();
+        return tokenService.generateTokensAndSetCookie(user, response);
     }
 
     /*
@@ -119,26 +85,17 @@ public class AuthService {
             throw new BadCredentialsException("Invalid or Expired Refresh Token");
         }
 
+        if (!jwtService.isTokenValid(refreshToken)) {
+            throw new BadCredentialsException("Invalid or Expired Refresh Token");
+        }
+
         String email = jwtService.extractUsername(refreshToken);
         User user = userRepository.findByEmail(email).orElseThrow(() -> new BadCredentialsException("Invalid or Expired Refresh Token"));
 
-        String newAccessToken = jwtService.generateAccessToken(email);
-        String newRefreshToken = jwtService.generateRefreshToken(email);
-        user.setRefreshToken(newRefreshToken);
-        userRepository.save(user);
-
+        // save old refresh token in blacklist
         saveTokenInBlacklist(refreshToken);
 
-        ResponseCookie cookie = ResponseCookie.from("refresh_token", newRefreshToken)
-                .httpOnly(true)
-                .secure(true)
-                .path("/")
-                .maxAge(60 * 60 * 24 * 10)
-                .sameSite("Lax")
-                .build();
-
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
-        return newAccessToken;
+        return tokenService.generateTokensAndSetCookie(user, response).getAccessToken();
     }
 
     /*
@@ -172,8 +129,10 @@ public class AuthService {
      * save token in blacklist
      */
     public void saveTokenInBlacklist(String token) {
-        TokenBlacklist tokenBlacklist = new TokenBlacklist();
-        tokenBlacklist.setToken(token);
-        tokenBlacklistRepository.save(tokenBlacklist);
+        tokenBlacklistRepository.save(
+            TokenBlacklist.builder()
+                .token(token)
+                .build()
+        );
     }
 }
